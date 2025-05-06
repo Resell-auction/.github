@@ -107,7 +107,7 @@
 ## ⛓️ ERD
 
 <p align="center">
-  
+  <img src="https://github.com/Resell-auction/AuctionMarket/blob/dev/img/erd2.png?raw=true">
 </p>
 
 <br>
