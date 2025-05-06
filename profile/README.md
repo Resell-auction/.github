@@ -99,7 +99,7 @@
 ## ⚙️ System Architecture
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ef1e0408-423e-4962-9067-0ab77ee5460f">
+  <img src="https://github.com/user-attachments/assets/e02e9f1b-0477-4c19-a12f-dfde7bb3dbfe">
 </p>
 
 <br>
