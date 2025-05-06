@@ -331,6 +331,218 @@
 
 </details>
 
+<details>
+<summary>🔎 <strong>Redis캐시를 통한 조회 시 직렬화 문제</strong></summary>
+  
+- 문제 상황
+    
+    Redis를 사용한 조회 기능에서 첫 시도에 redis키를 생성하고 조회가 정상적으로 진행했지만, 두 번째 시도에서 직렬화 에러가 나타났음
+    
+- 원인
+    
+    Redis에 객체를 캐시하거나 역직렬화할 때 `GenericJackson2JsonRedisSerializer`가 `AuctionResponse`를 인스턴스화하려고 시도하지만, 이 클래스에는
+    - `@NoArgsConstructor`(기본 생성자 없음)
+    - `@JsonCreator` 도 없음
+    - 필드도 모두 `final`이어서 필드 기반 주입도 불가능
+    
+    즉, Jackson이 객체를 만들 수가 없었음
+    
+- 해결 방법
+    1. 기본 생성자 추가 + @Setter 추가
+    2. 생성자 기반 역직렬화 설정(@JsonCreator사용)
+    
+    여기서 첫 번째 방법을 사용하여 해결
+</details>
+
+<details>
+<summary>🔎 <strong>AWS OpenSearch EC2 연결 실패</strong></summary>
+  
+- 배경
+    AWS OpenSearch VPC 도메인을 구현하여 최종적으로 실행한 다음 날, 확인 차 한번 더 실행을 했었더니 OpenSearch가 막히는 에러가 발생하게 되었다.
+    
+- 원인
+    Chat GPT를 통해 원인을 분석한 결과 AWS OpenSearch 도메인은 생성 직후에 인증을 느슨하게 하지만, 시간이 지나면 강제적으로 IAM 인증을 요구하게 된다고 한다.
+    즉, 시간이 지나서 보안 인증이 강력해졌기 때문에 익명 접근을 차단하면서 접근이 불가해진 것이다.
+    
+- 과정
+    그래서 이를 해결하기 위해서 여러 방법을 적용하게 되었다.
+  
+    1. IAM 인증을 위해서 보안 자격 증명
+       IAM 인증을 위해서 AccessKey, SecretKey를 얻기 위해서 현 IAM유저의 보안 자격 증명을 진행하였고 이를 환경 변수로 넣어서 사용하게 되었다.
+        
+    2. AWS OpenSearch 권한 문제
+       AccessKey와 SecretKey를 넣어서 서명 자체는 정확하게 진행됐지만 그 계정이 OpenSearch에 쓰기 권한이 없다는 것이다.
+       이를 해결하기 위해서는 현재 사용하고 있는 OpenSearch Access Policies(액세스 정책)을 열어 현재 정책에 나의 IAM 유저를 추가해야한다고 한다.
+        
+- 해결?
+    일단 진행해봤지만 시간 상으로 해결을 하지 못할 것 같기도 하고, merge 이후에 진행을 할 때에도 제대로 작동이 될지에 대한 불안함이 있었기 때문에 VPC 대신 Public으로 OpenSearch를 사용하기로 변경하여 작성하게 되었다.
+    결국, 원인 규명까지는 했지만 해결 과정에 다소 시간을 걸릴 것을 감안하여 다른 기술로 우회하기로 결정하게 되었다.
+  
+</details>
+
+<details>
+<summary>🔎 <strong>AWS S3, AWS CloudFront 테스트 문제</strong></summary>
+  
+### **문제**
+
+- AWS S3와 AWS CloudFront의 이미지 로딩 속도를 비교하기 위해 Postman를 사용하여 테스트를 진행함.
+- 하지만 작은 용량 이미지를 업로드한 경우 S3와 CloudFront의 응답 속도 차이가 거의 없었음.
+- 이에 따라 큰 용량 이미지를 업로드하여 테스트를 다시 수행하였고, 약 1초 정도의 차이가 발생.
+
+- AWS S3만 사용 시 Postman 응답 [응답 시간: 9.59s]
+![Image](https://github.com/user-attachments/assets/df3451e1-007e-4c69-b3da-8c2c0af5486d)
+
+- AWS S3와 AWS CloudFront 사용 시 Postman 응답 [응답 시간: 8.40s]
+![Image](https://github.com/user-attachments/assets/9216bdee-2c8f-4397-9f3f-90bd0fd85fc7)
+
+---
+
+### **원인 분석**
+
+- 본래의 목적은 "이미지 로딩 속도" 비교였으나, 당시 수행한 테스트는 "이미지 업로드 속도"에 대한 테스트였음.
+- 업로드 속도는 클라이언트의 인터넷 환경 등 외부 요인의 영향을 많이 받기 때문에 결과가 일관되지 않음.
+
+---
+
+### **해결 방법**
+
+- AWS S3와 CloudFront의 역할과 개념을 재정리하며 성능 비교 대상이 정확히 무엇인지 재확인한 후 테스트 대상은업로드가 아닌 "다운로드(로딩)"임을 명확히 함.
+- 또한 테스트하기 쉽게 이미지 업로드 성공 후 S3 URL과 CloudFront CDN URL 두 가지 모두 반환하도록 코드 수정.
+
+---
+
+### **테스트 결과**
+
+- API 응답 구조  (S3 및 CloudFront URL 포함)
+![Image](https://github.com/user-attachments/assets/50932cbe-117a-418b-9665-c0e36e9de527)
+- S3 경로를 통한 이미지 로딩 응답 예시 [응답 시간: 7.4s]
+![Image](https://github.com/user-attachments/assets/a66d15a7-8cff-447b-8e7e-1c70fda840c9)
+- CloudFront 경로를 통한 응답 예시 [응답 시간: 6.22s]
+![Image](https://github.com/user-attachments/assets/e616b116-f474-4fbc-82c2-cd82379aecdd)
+- 성능 개선 요약
+응답 시간: 7.4초 → 6.22초 (약 16% 개선)
+
+</details>
+
+<details>
+<summary>🔎 <strong>분산 락(@DistributedLock) 적용 됐음에도 데이터 정합성이 깨지는 문제</strong></summary>
+
+### 문제 현상
+
+- 선착순 100개의 쿠폰을 발급하는 로직에서, 동시 사용자 요청이 몰릴 경우 실제 발급된 쿠폰 수가 100개를 초과하는 현상 발생.
+- 이는 시스템의 핵심 제약 조건(쿠폰 총량 제한)을 위반하여 비즈니스 로직의 신뢰성을 저해함.
+
+---
+
+### 문제 정의
+
+- 다중 클라이언트 환경에서 공유 자원(쿠폰 수량)에 대한 동시 접근 시, 데이터베이스 상태 업데이트의 원자성 및 격리성이 보장되지 않아 발생하는 **경쟁 상태(Race Condition)** 문제
+- **문제 발생 시나리오 시각화**
+![Image](https://github.com/user-attachments/assets/0b810774-cf6b-49c2-a8ad-3a60b2ea2b0a)
+
+---
+
+### 원인 분석
+
+- 문제의 근본 원인은 **데이터베이스 잠금(Lock)의 생명주기와 트랜잭션(Transaction)의 범위가 일치하지 않았기 때문**.
+- 구체적으로, 쿠폰 수량을 변경하는 비즈니스 로직 실행 후 데이터베이스 트랜잭션이 최종 완료(Commit)되기 전에 잠금이 해제됨.
+
+---
+
+### 문제 해결
+
+- **트랜잭션 동기화 (Transaction Synchronization) 적용:** 데이터베이스 잠금의 유지 기간을 트랜잭션의 전체 생명주기와 동기화함
+- **트랜잭션이 성공적으로 커밋(Commit)되거나 실패하여 롤백(Rollback)될 때까지 데이터베이스 잠금을 유지**하도록 로직을 수정.
+- 이를 통해 특정 트랜잭션이 쿠폰 수량 데이터를 수정하는 동안에는 다른 트랜잭션이 해당 데이터에 접근하는 것을 완전히 차단하여 데이터 정합성을 보장.
+- **문제 해결 시나리오 시각화**
+![Image](https://github.com/user-attachments/assets/bd2ba52f-54d5-4f15-87cc-9fa56ebb53a3)
+
+</details>
+
+<details>
+<summary>🔎 <strong>BigQuery JSON 파싱 오류</strong></summary>
+  
+### 문제 발생
+- 배치 작업 로그에는 BigQuery 쓰기가 성공했다고 나왔지만(`Successfully wrote 1 items to BigQuery`), 실제 BigQuery 테이블에는 데이터가 들어오지 않음.
+- Google Cloud Console의 BigQuery 작업 기록에서 다음과 같은 오류가 확인됨.
+```bash 
+Error while reading data, error message: JSON parsing error in row starting at position 0: No such field: lastModified.
+```
+
+---
+
+### 문제 분석
+
+- BigQuery 작업 기록의 오류는 전달받은 JSON 데이터에 `lastModified` 필드가 포함되어 있는데, 대상 테이블(`auctions_winning_bid`) 스키마에는 해당 컬럼이 없어서 파싱에 실패했음을 의미.
+- 증분 처리 기준 시각을 관리하기 위해 `AuctionsWinningBidBQDTO` 클래스에 `lastModified` 필드를 추가 했는데, `BigQueryItemWriter`는 `ObjectMapper`를 사용하여 DTO 객체 전체를 JSON으로 변환하므로, 이 `lastModified` 필드도 JSON 데이터에 포함됨.
+- 하지만 BigQuery 테이블 스키마에는 해당 컬럼이 없었기 때문에 스키마 불일치 오류가 발생함.
+- Spring Batch 로그에서는 API 호출 자체는 성공했기 때문에 쓰기 성공으로 기록됨.
+
+---
+
+### 해결 방법
+
+- BigQuery 테이블에 실제로 저장할 필요가 없는 `lastModified` 필드를 JSON 변환 과정에서 제외하기로 결정.
+- **`AuctionsWinningBidBQDTO.java` 클래스의 `lastModified` 필드 위에 Jackson의 `@JsonIgnore` 어노테이션을 추가**
+
+```bash
+@JsonIgnore
+private Instant lastModified;
+```
+
+- 이를 통해 DTO 객체 내에서는 `lastModified` 값을 사용하여 타임스탬프 갱신 로직을 처리하고, BigQuery로 전송되는 JSON 데이터에서는 해당 필드를 제외하여 스키마 불일치 문제를 해결함.
+  
+</details>
+
+<details>
+<summary>🔎 <strong>서비스 간 통신에러(CloudMap)</strong></summary>
+  
+### 문제 원인
+
+애플리케이션이 AuctionMarket과 WebSocket으로 분리되면서, AuctionMarket 앱이 WebSocket 앱의 기능을 호출해야 할때, Fargate 환경에서는 Task의 IP 주소가 동적으로 할당되고 변경되었음. 기존에 고정된 IP나 DNS 이름을 설정 파일에 하드코딩하는 방식을 사용하였으나 현재 서비스에서 동적으로 변하는 주소로 인해 서비스 간 통신이 끊꼇음.
+
+---
+
+### 기술 도입 및 해결책
+
+동적인 서비스의 네트워크 위치(IP, 포트)를 안정적으로 찾기 위해 AWS Cloud Map을 서비스 디스커버리 솔루션으로 도입.
+Terraform([cloudmap.tf](http://cloudmap.tf/))으로 VPC 내에서만 접근 가능한 Private DNS 네임스페이스(예: my-spring-infra.local)를 생성하고, 그 안에 websocket-app이라는 이름의 서비스를 등록.
+
+WebSocketApp을 실행하는 ECS Service([ecs.tf](http://ecs.tf/))가 시작하는 Task들을 이 Cloud Map 서비스(websocket-app.my-spring-infra.local)에 자동으로 등록하도록 service_registries 설정을 추가함.
+
+이때 AuctionMarketApp은 실행 시 Spring WebClient와 AWS SDK를 사용하여 Cloud Map에 등록된 websocket-app.my-spring-infra.local 서비스의 최신 Task IP와 포트 정보를 동적으로 조회하여 HTTP 통신을 수행하고 이를 수행하기 위해 ECS Task Role([ecs.tf](http://ecs.tf/) IAM Policy)에 servicediscovery:DiscoverInstances 권한을 부여함으로써 서비스 디스커버리를 구현함.
+
+---
+
+### 도입 전/후 비교
+
+Before: 서비스 간 통신 시 대상 서비스의 IP 주소를 수동으로 관리하거나, 복잡한 자체 로직 또는 외부 솔루션을 통해서만 해결 이에 따라 IP 변경 시 장애 발생 가능성이 있음.
+![Image](https://github.com/user-attachments/assets/c69819b6-82d9-46d2-9f0f-7d05bcb9d724)
+After: Cloud Map과 ECS 통합을 통해 서비스 등록 및 조회가 자동화. 각 서비스는 논리적인 서비스 이름만으로 통신 대상을 찾을 수 있어 코드의 유연성과 인프라의 탄력성이 크게 향상.
+![Image](https://github.com/user-attachments/assets/7fdfa67f-8043-466e-bc90-3f6240ba09b2)
+
+</details>
+
+<details>
+<summary>🔎 <strong>이미지 로딩 속도 테스트 한계</strong></summary>
+  
+### **문제**
+
+- Postman을 통해 응답 시간을 측정했으나, 실제 사용자 환경과 같은 동시 접속 상황에서는 정확한 판단이 어려움
+
+### **해결 방법**
+
+- 이에 따라, 성능 테스트 도구인 JMeter를 활용해 다수의 사용자가 동시에 이미지를 요청하는 상황을 시뮬레이션 진행
+- 그 결과 CloudFront 적용 시 응답 속도가 개선되었고, 고객 사용 환경에서도 안정적으로 작동함을 확인
+
+### 테스트 결과
+
+- 상황: 유저 1000명이 동시에 각각 3번씩 같은 제품 이미지 조회 요청.
+- 성능 개선 
+**평균 응답 시간**: 6262ms → 2903ms (약 54% 개선)
+![Image](https://github.com/user-attachments/assets/064c5d02-6358-4d2a-ac8e-cc62ffeb3d1c)
+
+</details>
 
 ## 🔑 [Key Summary](https://www.notion.so/teamsparta/2-ReSell-C2C-1e22dc3ef51480c8ae7cef082afa5911?pvs=4#1e72dc3ef51480e188a5d2021849e048)
 ### 1. 이미지 응답 속도 최적화
